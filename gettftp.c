@@ -32,10 +32,8 @@ void gettftp(char *host, char *file) {
       printf("IP : %s\nport : %s \nIPVx : %d\n",hbuf,sbuf,result->ai_family); //hbuf IP, sbuf port
 
     int sfd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
-    int i = connect(sfd, result->ai_addr, result->ai_addrlen);
-	if (i==-1) { printf("Connection error\n"); exit(EXIT_FAILURE); }
-	else { printf("Connection Successful !\n"); }
-   freeaddrinfo(result);           /* No longer needed */
+  
+    freeaddrinfo(result);           /* No longer needed */
 
 }
 
