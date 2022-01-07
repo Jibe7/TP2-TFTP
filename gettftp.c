@@ -8,6 +8,26 @@
 
 #define BUF_SIZE 500
 
+char* buildRRQ(char *file,int RRQ_Size) {
+	char *RRQ;
+	int n = strlen(file);
+	int l = strlen("netascii");
+	RRQ = (char *) malloc(RRQ_Size);
+	for (int i=0;i<15;i++) {
+		RRQ[i]=0;
+	}
+	RRQ[15]=1;
+	strcpy(&RRQ[16] ,file );
+	for (int j=0;j<8;j++) {
+		RRQ[16+n+j]=0;
+	}
+	strcpy(&RRQ[24+n],"netascii");
+	for (int j=0;j<8;j++) {
+		RRQ[24+n+l+j]=0;
+	}
+	return RRQ;
+}
+
 void gettftp(char *host, char *file) {
 
     struct addrinfo hints;
@@ -18,7 +38,7 @@ void gettftp(char *host, char *file) {
    /* Obtain address(es) matching host/port */
 
     memset(&hints, 0, sizeof(struct addrinfo)); // fill memory with constant byte : void *memset(void *s, int c, size_t n);
-    hints.ai_family = AF_INET;    /* Allow IPv4 */
+    //hints.ai_family = AF_INET;    /* Allow IPv4 */
     hints.ai_socktype = SOCK_DGRAM; /* Datagram socket */
     hints.ai_flags = 0;
     hints.ai_protocol = IPPROTO_UDP;          /* UDP protocol */
@@ -29,12 +49,22 @@ void gettftp(char *host, char *file) {
         exit(EXIT_FAILURE);
     }
     getnameinfo(result->ai_addr, result->ai_addrlen,hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
-      printf("IP : %s\nport : %s \nIPVx : %d\n",hbuf,sbuf,result->ai_family); //hbuf IP, sbuf port
+      printf("IP : %s\nport : %s \n",hbuf,sbuf); //hbuf IP, sbuf port
 
     int sfd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
-  
+    if (sfd==-1) {
+		printf("Socket Failure");
+	}
     freeaddrinfo(result);           /* No longer needed */
-
+	
+	
+	int RRQ_SIZE = 16+strlen(file)+8+strlen("netascii")+8;
+	char *RRQ;
+	RRQ = (char *) malloc(RRQ_SIZE);
+	
+	RRQ = buildRRQ(file, RRQ_SIZE);  
+	printf("j'affiche RRQ : %s\n",RRQ);
+	//sendto(sfd ,RRQ ,sizeof(RRQ) , 0, &buf, result->ai_addrlen);
 }
 
 int main(int argc, char *argv[]) {
