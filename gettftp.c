@@ -29,10 +29,12 @@ void gettftp(char *host, char *file) {
         exit(EXIT_FAILURE);
     }
     getnameinfo(result->ai_addr, result->ai_addrlen,hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
-      printf("IP : %s \n port :%s \n",hbuf,sbuf); //hbuf IP, sbuf port
+      printf("IP : %s\nport : %s \nIPVx : %d\n",hbuf,sbuf,result->ai_family); //hbuf IP, sbuf port
 
-   
-
+    int sfd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+    int i = connect(sfd, result->ai_addr, result->ai_addrlen);
+	if (i==-1) { printf("Connection error\n"); exit(EXIT_FAILURE); }
+	else { printf("Connection Successful !\n"); }
    freeaddrinfo(result);           /* No longer needed */
 
 }
