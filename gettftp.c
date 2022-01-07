@@ -9,19 +9,20 @@
 #define BUF_SIZE 500
 
 char* buildRRQ(char *file,int RRQ_Size) {
-	char *RRQ;
 	int n = strlen(file);
-	int l = strlen("netascii");
+	char *octet = "octet";
+	int l = strlen(octet);
+	char *RRQ;
 	RRQ = (char *) malloc(RRQ_Size);
 	for (int i=0;i<15;i++) {
 		RRQ[i]=0;
 	}
 	RRQ[15]=1;
-	strcpy(&RRQ[16] ,file );
-	for (int j=0;j<8;j++) {
+	strcpy(&RRQ[16], file);
+	for (int j=0;j<l;j++) {
 		RRQ[16+n+j]=0;
 	}
-	strcpy(&RRQ[24+n],"netascii");
+	strcpy(&RRQ[24+n], octet);
 	for (int j=0;j<8;j++) {
 		RRQ[24+n+l+j]=0;
 	}
@@ -63,8 +64,11 @@ void gettftp(char *host, char *file) {
 	RRQ = (char *) malloc(RRQ_SIZE);
 	
 	RRQ = buildRRQ(file, RRQ_SIZE);  
-	printf("j'affiche RRQ : %s\n",RRQ);
-	//sendto(sfd ,RRQ ,sizeof(RRQ) , 0, &buf, result->ai_addrlen);
+	for (int i = 0; i < RRQ_SIZE; i++) {
+		printf("%d",RRQ[i]);
+	}
+	printf("\n");
+	sendto(sfd, RRQ, RRQ_SIZE, 0, (struct sockaddr *) result->ai_addr, result->ai_addrlen);
 }
 
 int main(int argc, char *argv[]) {
@@ -74,3 +78,4 @@ int main(int argc, char *argv[]) {
   }
 	return 0;
 }
+
