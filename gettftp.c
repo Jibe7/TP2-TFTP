@@ -35,6 +35,7 @@ void gettftp(char *host, char *file) {
     struct addrinfo *result;
     char hbuf[BUF_SIZE];
     char sbuf[BUF_SIZE];
+    char buf[BUF_SIZE];
 
    /* Obtain address(es) matching host/port */
 
@@ -44,7 +45,7 @@ void gettftp(char *host, char *file) {
     hints.ai_flags = 0;
     hints.ai_protocol = IPPROTO_UDP;          /* UDP protocol */
 
-    int s = getaddrinfo(host, "1069", &hints, &result);
+    int s = getaddrinfo(host, "69", &hints, &result);
 	if (s != 0) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
         exit(EXIT_FAILURE);
@@ -55,6 +56,7 @@ void gettftp(char *host, char *file) {
     int sfd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
     if (sfd==-1) {
 		printf("Socket Failure");
+		exit(EXIT_FAILURE);
 	}
     freeaddrinfo(result);           /* No longer needed */
 	
@@ -68,7 +70,15 @@ void gettftp(char *host, char *file) {
 		printf("%d",RRQ[i]);
 	}
 	printf("\n");
+	
 	sendto(sfd, RRQ, RRQ_SIZE, 0, (struct sockaddr *) result->ai_addr, result->ai_addrlen);
+	
+	int nread = read(sfd,buf,BUF_SIZE);
+	if (nread == -1) {
+		perror("read");
+		exit(EXIT_FAILURE);
+	}
+	printf("Received %ld bytes : %s\n", (long) nread, buf);
 }
 
 int main(int argc, char *argv[]) {
@@ -78,4 +88,5 @@ int main(int argc, char *argv[]) {
   }
 	return 0;
 }
+
 
