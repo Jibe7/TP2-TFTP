@@ -60,16 +60,14 @@ void gettftp(char *host, char *file) {
 	RRQ = (char *) malloc(RRQ_SIZE);
 	
 	RRQ = buildRRQ(file, RRQ_SIZE);  
-	for (int i = 0; i < RRQ_SIZE; i++) {
-		printf("%d",RRQ[i]);
-	}
-	printf("\n");
 	
 	sendto(sfd, RRQ, RRQ_SIZE, 0, (struct sockaddr *) result->ai_addr, result->ai_addrlen);
+	free(RRQ);
 	
 	int nread = read(sfd,buf,BUF_SIZE);
 	if (nread == -1) {
 		perror("read");
+		printf("Error");
 		exit(EXIT_FAILURE);
 	}
 	printf("Received %ld bytes : %s\n", (long) nread, buf);
