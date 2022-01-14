@@ -5,6 +5,11 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <errno.h>
+#include <time.h>
+#include <stdbool.h>
+#include <fcntl.h>
 
 #define BUF_SIZE 500
 
@@ -27,9 +32,10 @@ void gettftp(char *host, char *file) {
 
     struct addrinfo hints;
     struct addrinfo *result;
+    struct sockaddr src;
+    socklen_t *srclen = malloc (sizeof(src));
     char hbuf[BUF_SIZE];
     char sbuf[BUF_SIZE];
-    char buf[BUF_SIZE];
 
    /* Obtain address(es) matching host/port */
 
@@ -64,13 +70,40 @@ void gettftp(char *host, char *file) {
 	sendto(sfd, RRQ, RRQ_SIZE, 0, (struct sockaddr *) result->ai_addr, result->ai_addrlen);
 	free(RRQ);
 	
-	int nread = read(sfd,buf,BUF_SIZE);
+	char *buf;
+	buf = (char *) malloc(BUF_SIZE);
+	
+	ssize_t nread = recvfrom(sfd, buf, BUF_SIZE, 0, &src, srclen);
+	
+	char *ACK;
+	ACK = (char *) malloc(4);
+	ACK[0] = 0;
+	ACK[1] = 4;
+	ACK[2] = buf[2];
+	ACK[3] = buf[3];
+	sendto(sfd, ACK, 4, 0, (struct sockaddr *) &src, *srclen);
+	
 	if (nread == -1) {
 		perror("read");
 		printf("Error");
 		exit(EXIT_FAILURE);
 	}
-	printf("Received %ld bytes : %s\n", (long) nread, buf);
+	
+	printf("Received %ld bytes\n", (long) nread);
+	for (int i = 0; i < 4; i++) {
+		printf("%d",buf[i]);
+	}
+	printf("\n");
+	
+	int fdc = creat("test.txt", S_IRUSR | S_IWUSR | S_IRGRP);
+	int block = 0;
+	
+	while (buf[3] != block) {
+		write(fdc,&buf[4],nread-4);
+		nread = recvfrom(sfd, buf, BUF_SIZE, 0, &src, srclen);
+		block++;
+	}
+	
 }
 
 int main(int argc, char *argv[]) {
