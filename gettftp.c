@@ -14,18 +14,12 @@ char* buildRRQ(char *file,int RRQ_Size) {
 	int l = strlen(octet);
 	char *RRQ;
 	RRQ = (char *) malloc(RRQ_Size);
-	for (int i=0;i<15;i++) {
-		RRQ[i]=0;
-	}
-	RRQ[15]=1;
-	strcpy(&RRQ[16], file);
-	for (int j=0;j<l;j++) {
-		RRQ[16+n+j]=0;
-	}
-	strcpy(&RRQ[24+n], octet);
-	for (int j=0;j<8;j++) {
-		RRQ[24+n+l+j]=0;
-	}
+	RRQ[0]=0;
+	RRQ[1]=1;
+	strcpy(&RRQ[2], file);
+	RRQ[2+n]=0;
+	strcpy(&RRQ[3+n], octet);
+	RRQ[3+n+l]=0;
 	return RRQ;
 }
 
@@ -61,7 +55,7 @@ void gettftp(char *host, char *file) {
     freeaddrinfo(result);           /* No longer needed */
 	
 	
-	int RRQ_SIZE = 16+strlen(file)+8+strlen("netascii")+8;
+	int RRQ_SIZE = 2+strlen(file)+1+strlen("octet")+1;
 	char *RRQ;
 	RRQ = (char *) malloc(RRQ_SIZE);
 	
