@@ -10,32 +10,39 @@
 #include <time.h>
 #include <stdbool.h>
 #include <fcntl.h>
+#include <math.h>
 
 #define BUF_SIZE 1024
 
-char* buildRRQ(char *file,int RRQ_Size, int blocksize) { ////Verify blocksize !
-	int n = strlen(file);
-	char *octet = "octet";
-	int l = strlen(octet);
+char* buildRRQ(char *file,int RRQ_Size, char *blocksize) {
 	char *RRQ;
 	RRQ = (char *) malloc(RRQ_Size);
-	RRQ[0]=0;
-	RRQ[1]=1;
-	strcpy(&RRQ[2], file);
-	RRQ[2+n]=0;
-	strcpy(&RRQ[3+n], octet);
-	RRQ[3+n+l]=0;
-	if (blocksize != 0) { //If the user wants to add a blocksize option
-		strcpy(&RRQ[4+n+l], "blksize");
-		int b = strlen("blksize");
-		RRQ[4+n+l+b] = 0;
-		RRQ[5+n+l+b] = blocksize; //Check between 8 and 1428 bytes
-		//RRQ[5+n+l+b+blocksize/8] = 0;
+	int blcksize = atoi(blocksize);
+	if ((blcksize < 8 || blcksize > 65464) && !(blcksize == 0)) {
+		printf("Incompatible blocksize. Must be between 8 and 65464.\n");
+		exit(EXIT_FAILURE);
+	}
+	else {
+		int n = strlen(file);
+		int l = strlen("octet");
+		RRQ[0]=0;
+		RRQ[1]=1;
+		strcpy(&RRQ[2], file);
+		RRQ[2+n]=0;
+		strcpy(&RRQ[3+n], "octet");
+		RRQ[3+n+l]=0;
+		if (blocksize != 0) { //If the user wants to add a blocksize option
+			strcpy(&RRQ[4+n+l], "blksize");
+			int b = strlen("blksize");
+			RRQ[4+n+l+b] = 0;
+			strcpy(&RRQ[5+n+l+b],blocksize);
+			//The 0 byte is already in blocksize !
+		}
 	}
 	return RRQ;
 }
 
-void gettftp(char *host, char *file, int blocksize) {
+void gettftp(char *host, char *file, char *blocksize) {
 
     struct addrinfo hints;
     struct addrinfo *result;
@@ -67,23 +74,42 @@ void gettftp(char *host, char *file, int blocksize) {
 	}
     freeaddrinfo(result);           /* No longer needed */
 	
-	
-	int RRQ_SIZE = 2+strlen(file)+1+strlen("octet")+1;
+	//Send RRQ with blocksize option
+	int RRQ_SIZE = 2+strlen(file)+1+strlen("octet")+1+strlen("blcksize")+1+strlen(blocksize);
 	char *RRQ;
 	RRQ = (char *) malloc(RRQ_SIZE);
-	RRQ = buildRRQ(file, RRQ_SIZE, blocksize);  
-	
+	RRQ = buildRRQ(file, RRQ_SIZE, blocksize);
 	sendto(sfd, RRQ, RRQ_SIZE, 0, (struct sockaddr *) result->ai_addr, result->ai_addrlen);
+	RRQ = (char *) realloc(RRQ, RRQ_SIZE);
+	
+	//Read OACK
+	char *OACK;
+	int OACK_SIZE = 2 + strlen("blcksize") + strlen(blocksize);
+	OACK = (char *) malloc(OACK_SIZE);
+	ssize_t nread = recvfrom(sfd, OACK, OACK_SIZE, 0, &srv_addr, &srv_addrlen);
+	char *blcksize;
+	blcksize = (char *) malloc(strlen(blocksize));
+	blcksize = &OACK[2+strlen("blcksize")];
+	printf("Accepted blocksize : %d\n",atoi(blcksize));
+	//free(OACK);
+	
+	//What now with OACK ? Send ACK to new port ?
+	char *ACK;
+	ACK = (char *) malloc(4);
+	ACK[0] = 0;
+	ACK[1] = 4;
+	ACK[2] = 0;
+	ACK[3] = 0; //Block 0 acknowledgment for OACK
+	sendto(sfd, ACK, 4, 0, &srv_addr, srv_addrlen);
 	free(RRQ);
+	//free(blcksize);
 	
 	char *buf;
 	buf = (char *) malloc(BUF_SIZE);
 	
-	ssize_t nread = recvfrom(sfd, buf, BUF_SIZE, 0, &srv_addr, &srv_addrlen);
+	nread = recvfrom(sfd, buf, BUF_SIZE, 0, &srv_addr, &srv_addrlen);
 	printf("New port : %d \n",htons (((struct sockaddr_in *) &srv_addr)->sin_port));
 	
-	char *ACK;
-	ACK = (char *) malloc(4);
 	
 	if (nread == -1) {
 		perror("read");
@@ -103,7 +129,7 @@ void gettftp(char *host, char *file, int blocksize) {
 		sendto(sfd, ACK, 4, 0, &srv_addr, srv_addrlen);
 		buf = (char *) realloc(buf, BUF_SIZE);
 		nread = recvfrom(sfd, buf, BUF_SIZE, 0, &srv_addr, &srv_addrlen);
-		if (nread != 4) {
+		if (nread >= atoi(blcksize)+4) {
 			block++;
 		}
 		else {
@@ -122,12 +148,9 @@ void gettftp(char *host, char *file, int blocksize) {
 }
 
 int main(int argc, char *argv[]) {
-	//argv0 command entrée, argc nbre d'arguments, argv1 premier argument (host), argv2 deuxième (file), argv3 = blocksize
-  if (argc==4) {
-	  gettftp(argv[1], argv[2], (int) argv[3]); //Casting not really liked
-  }
+	//argv0 command entrée, argc nbre d'arguments, argv1 premier argument (host), argv2 deuxième (file), argv3 = blocksize (atoi converts char* to int)
+	if (argc==4) {
+		gettftp(argv[1], argv[2], argv[3]);
+	}
 	return 0;
 }
-
-
-
