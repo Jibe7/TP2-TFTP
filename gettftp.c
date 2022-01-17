@@ -10,15 +10,14 @@
 #include <time.h>
 #include <stdbool.h>
 #include <fcntl.h>
-#include <math.h>
 
 #define BUF_SIZE 1024
 
 char* buildRRQ(char *file,int RRQ_Size, char *blocksize) {
 	char *RRQ;
 	RRQ = (char *) malloc(RRQ_Size);
-	int blcksize = atoi(blocksize);
-	if ((blcksize < 8 || blcksize > 65464) && !(blcksize == 0)) {
+	int blcksize = atoi(blocksize); //To convert the char * into an int
+	if (blcksize < 8 || blcksize > 65464) {
 		printf("Incompatible blocksize. Must be between 8 and 65464.\n");
 		exit(EXIT_FAILURE);
 	}
@@ -31,15 +30,22 @@ char* buildRRQ(char *file,int RRQ_Size, char *blocksize) {
 		RRQ[2+n]=0;
 		strcpy(&RRQ[3+n], "octet");
 		RRQ[3+n+l]=0;
-		if (blocksize != 0) { //If the user wants to add a blocksize option
-			strcpy(&RRQ[4+n+l], "blksize");
-			int b = strlen("blksize");
-			RRQ[4+n+l+b] = 0;
-			strcpy(&RRQ[5+n+l+b],blocksize);
-			//The 0 byte is already in blocksize !
-		}
+		strcpy(&RRQ[4+n+l], "blksize");
+		int b = strlen("blksize");
+		RRQ[4+n+l+b] = 0;
+		strcpy(&RRQ[5+n+l+b],blocksize); //The 0 byte is already in blocksize !
 	}
 	return RRQ;
+}
+
+char* buildACK(char ack2, char ack3) {
+	char *ACK;
+	ACK = (char *) malloc(4);
+	ACK[0] = 0;
+	ACK[1] = 4;
+	ACK[2] = ack2;
+	ACK[3] = ack3;
+	return ACK;
 }
 
 void gettftp(char *host, char *file, char *blocksize) {
@@ -51,10 +57,8 @@ void gettftp(char *host, char *file, char *blocksize) {
     char hbuf[BUF_SIZE];
     char sbuf[BUF_SIZE];
 
-   /* Obtain address(es) matching host/port */
-
+    /* Obtain address matching host/port */
     memset(&hints, 0, sizeof(struct addrinfo)); // fill memory with constant byte : void *memset(void *s, int c, size_t n);
-    //hints.ai_family = AF_INET;    /* Allow IPv4 */
     hints.ai_socktype = SOCK_DGRAM; /* Datagram socket */
     hints.ai_flags = 0;
     hints.ai_protocol = IPPROTO_UDP;          /* UDP protocol */
@@ -72,9 +76,9 @@ void gettftp(char *host, char *file, char *blocksize) {
 		printf("Socket Failure");
 		exit(EXIT_FAILURE);
 	}
-    freeaddrinfo(result);           /* No longer needed */
+    freeaddrinfo(result); //No longer needed
 	
-	//Send RRQ with blocksize option
+	/*Send RRQ with blocksize option*/
 	int RRQ_SIZE = 2+strlen(file)+1+strlen("octet")+1+strlen("blcksize")+1+strlen(blocksize);
 	char *RRQ;
 	RRQ = (char *) malloc(RRQ_SIZE);
@@ -82,7 +86,7 @@ void gettftp(char *host, char *file, char *blocksize) {
 	sendto(sfd, RRQ, RRQ_SIZE, 0, (struct sockaddr *) result->ai_addr, result->ai_addrlen);
 	RRQ = (char *) realloc(RRQ, RRQ_SIZE);
 	
-	//Read OACK
+	/*Read OACK*/
 	char *OACK;
 	int OACK_SIZE = 2 + strlen("blcksize") + strlen(blocksize);
 	OACK = (char *) malloc(OACK_SIZE);
@@ -91,18 +95,9 @@ void gettftp(char *host, char *file, char *blocksize) {
 	blcksize = (char *) malloc(strlen(blocksize));
 	blcksize = &OACK[2+strlen("blcksize")];
 	printf("Accepted blocksize : %d\n",atoi(blcksize));
-	//free(OACK);
 	
-	//What now with OACK ? Send ACK to new port ?
-	char *ACK;
-	ACK = (char *) malloc(4);
-	ACK[0] = 0;
-	ACK[1] = 4;
-	ACK[2] = 0;
-	ACK[3] = 0; //Block 0 acknowledgment for OACK
-	sendto(sfd, ACK, 4, 0, &srv_addr, srv_addrlen);
-	free(RRQ);
-	//free(blcksize);
+	//Send ACK with block 0  to approve blocksize and start data transmission
+	sendto(sfd, buildACK(0, 0), 4, 0, &srv_addr, srv_addrlen);
 	
 	char *buf;
 	buf = (char *) malloc(BUF_SIZE);
@@ -122,35 +117,31 @@ void gettftp(char *host, char *file, char *blocksize) {
 	
 	while (buf[3] != block) {
 		write(fdc,&buf[4],nread-4);
-		ACK[0] = 0;
-		ACK[1] = 4;
-		ACK[2] = buf[2];
-		ACK[3] = buf[3];
-		sendto(sfd, ACK, 4, 0, &srv_addr, srv_addrlen);
+		sendto(sfd, buildACK(buf[2], buf[3]), 4, 0, &srv_addr, srv_addrlen);
 		buf = (char *) realloc(buf, BUF_SIZE);
 		nread = recvfrom(sfd, buf, BUF_SIZE, 0, &srv_addr, &srv_addrlen);
-		if (nread >= atoi(blcksize)+4) {
+		if (nread >= atoi(blcksize)+4) { //If it is not the final block
 			block++;
 		}
 		else {
-			block += 2;
+			block += 2; //To get out of the while loop
 		}
 	}
-	ACK[0] = 0;
-	ACK[1] = 4;
-	ACK[2] = buf[2];
-	ACK[3] = buf[3];
-	sendto(sfd, ACK, 4, 0, &srv_addr, srv_addrlen);
+	sendto(sfd, buildACK(buf[2],buf[3]), 4, 0, &srv_addr, srv_addrlen);
 	
-	buf = (char *) realloc(buf, BUF_SIZE);
+	free(OACK);
+	free(buf);
 	close(fdc);
 	
 }
 
-int main(int argc, char *argv[]) {
-	//argv0 command entrée, argc nbre d'arguments, argv1 premier argument (host), argv2 deuxième (file), argv3 = blocksize (atoi converts char* to int)
-	if (argc==4) {
+int main(int argc, char *argv[]) { //argv0 : input command, argc : number of args, argv1 : first arg (host), argv2 second arg (file), argv3 : third arg (blocksize)	
+	if (argc==4) { //Check if all arguments are given
 		gettftp(argv[1], argv[2], argv[3]);
+	}
+	else {
+		printf("Error\nUsage : ./getttftp [host] [file] [blocksize]\n");
+		exit(EXIT_FAILURE);
 	}
 	return 0;
 }
