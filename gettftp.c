@@ -18,6 +18,9 @@ char* buildRRQ(char *file,int RRQ_Size, char *blocksize) {
 	RRQ = (char *) malloc(RRQ_Size);
 	int blcksize = atoi(blocksize); //To convert the char * into an int
 	if (blcksize < 8 || blcksize > 65464) {
+		//the greater the value of the blocksize is, the lower the time will be because there is a reduction of the number of packet and acknoledgement sent
+		//however it should not pass the path MTU or the msg will be fragmented and the time will increase again
+		//we find in localhost that the path MTU was 65000 by using the function "traceroute --mtu <target>". Thus the theoritical optimal blocksize value is 65000
 		printf("Incompatible blocksize. Must be between 8 and 65464.\n");
 		exit(EXIT_FAILURE);
 	}
