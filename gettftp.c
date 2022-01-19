@@ -58,25 +58,28 @@ void gettftp(char *host, char *file, char *blocksize) {
     char sbuf[BUF_SIZE];
 
     /* Obtain address matching host/port */
-    memset(&hints, 0, sizeof(struct addrinfo)); // fill memory with constant byte : void *memset(void *s, int c, size_t n);
+    memset(&hints, 0, sizeof(struct addrinfo)); //Fill memory with constant byte (0)
     hints.ai_socktype = SOCK_DGRAM; /* Datagram socket */
     hints.ai_flags = 0;
-    hints.ai_protocol = IPPROTO_UDP;          /* UDP protocol */
+    hints.ai_protocol = IPPROTO_UDP; /* UDP protocol */
 
-    int s = getaddrinfo(host, "1069", &hints, &result);
+    int s = getaddrinfo(host, "1069", &hints, &result); //Put port to 69 for external server, 1069 for local server
 	if (s != 0) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
         exit(EXIT_FAILURE);
-    }
+        }
     getnameinfo(result->ai_addr, result->ai_addrlen,hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
-      printf("IP : %s\nport : %s \n",hbuf,sbuf); //hbuf IP, sbuf port
-
+    printf("IP : %s, port : %s \n",hbuf,sbuf); //hbuf IP, sbuf port
+	
+	
+	/*Creation of a socket*/
     int sfd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
     if (sfd==-1) {
 		printf("Socket Failure");
 		exit(EXIT_FAILURE);
-	}
+		}
     freeaddrinfo(result); //No longer needed
+	
 	
 	/*Send RRQ with blocksize option*/
 	int RRQ_SIZE = 2+strlen(file)+1+strlen("octet")+1+strlen("blcksize")+1+strlen(blocksize);
@@ -85,6 +88,7 @@ void gettftp(char *host, char *file, char *blocksize) {
 	RRQ = buildRRQ(file, RRQ_SIZE, blocksize);
 	sendto(sfd, RRQ, RRQ_SIZE, 0, (struct sockaddr *) result->ai_addr, result->ai_addrlen);
 	RRQ = (char *) realloc(RRQ, RRQ_SIZE);
+	
 	
 	/*Read OACK*/
 	char *OACK;
@@ -96,38 +100,47 @@ void gettftp(char *host, char *file, char *blocksize) {
 	blcksize = &OACK[2+strlen("blcksize")];
 	printf("Accepted blocksize : %d\n",atoi(blcksize));
 	
-	//Send ACK with block 0  to approve blocksize and start data transmission
+	
+	/*Send ACK with block 0  to approve blocksize and start data transmission*/
 	sendto(sfd, buildACK(0, 0), 4, 0, &srv_addr, srv_addrlen);
 	
+	
+	/*Start reading and copying into a file*/
 	char *buf;
 	buf = (char *) malloc(BUF_SIZE);
+	int block = 0; //Needed to count the received blocks and send acknowledgments
 	
 	nread = recvfrom(sfd, buf, BUF_SIZE, 0, &srv_addr, &srv_addrlen);
-	printf("New port : %d \n",htons (((struct sockaddr_in *) &srv_addr)->sin_port));
-	
+	printf("New port (to send acknowledgments) : %d \n",htons (((struct sockaddr_in *) &srv_addr)->sin_port));
 	
 	if (nread == -1) {
 		perror("read");
-		printf("Error");
+		printf("Reading error");
 		exit(EXIT_FAILURE);
-	}
-
-	int fdc = open("test.txt", O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP);
-	int block = 0;
+		}
+		
+	int fdc = open("test.txt", O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR | S_IRGRP); //change the .txt to .png if png file and inversely
+	if (fdc == -1) {
+		perror("open");
+		printf("File opening error");
+		exit(EXIT_FAILURE);
+		}
 	
-	while (buf[3] != block) {
-		write(fdc,&buf[4],nread-4);
-		sendto(sfd, buildACK(buf[2], buf[3]), 4, 0, &srv_addr, srv_addrlen);
+	while (buf[3] != block) { //While the received block number is different from the last ACK sent
+		write(fdc,&buf[4],nread-4); //Copy data into the file
+		sendto(sfd, buildACK(buf[2], buf[3]), 4, 0, &srv_addr, srv_addrlen); //Send ACK
 		buf = (char *) realloc(buf, BUF_SIZE);
 		nread = recvfrom(sfd, buf, BUF_SIZE, 0, &srv_addr, &srv_addrlen);
-		if (nread >= atoi(blcksize)+4) { //If it is not the final block
+		if (nread >= atoi(blcksize)+4) { //If it is not the final block (datasize == blocksize)
 			block++;
-		}
+			}
 		else {
-			block += 2; //To get out of the while loop
+			block += 2; //To get out of the loop
+			}
 		}
-	}
-	sendto(sfd, buildACK(buf[2],buf[3]), 4, 0, &srv_addr, srv_addrlen);
+		
+	sendto(sfd, buildACK(buf[2],buf[3]), 4, 0, &srv_addr, srv_addrlen); //Send last ACK
+	printf("Transmission complete.\n");
 	
 	free(OACK);
 	free(buf);
