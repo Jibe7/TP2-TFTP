@@ -68,26 +68,30 @@ void puttftp(char *host, char *file, char *blocksize) {
     char hbuf[BUF_SIZE];
     char sbuf[BUF_SIZE];
 
+
     /* Obtain address matching host/port */
-    memset(&hints, 0, sizeof(struct addrinfo)); // fill memory with constant byte : void *memset(void *s, int c, size_t n);
+    memset(&hints, 0, sizeof(struct addrinfo)); //Fill memory with constant byte (0)
     hints.ai_socktype = SOCK_DGRAM; /* Datagram socket */
     hints.ai_flags = 0;
     hints.ai_protocol = IPPROTO_UDP; /* UDP protocol */
 
-    int s = getaddrinfo(host, "1069", &hints, &result);
+    int s = getaddrinfo(host, "1069", &hints, &result); //Put port to 69 for external server, 1069 for local server
 	if (s != 0) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
         exit(EXIT_FAILURE);
-    }
+        }
     getnameinfo(result->ai_addr, result->ai_addrlen,hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
-      printf("IP : %s\nport : %s \n",hbuf,sbuf); //hbuf IP, sbuf port
-
+    printf("IP : %s, port : %s \n",hbuf,sbuf); //hbuf IP, sbuf port
+	
+	
+	/*Creation of a socket*/
     int sfd = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
     if (sfd==-1) {
 		printf("Socket Failure");
 		exit(EXIT_FAILURE);
-	}
+		}
     freeaddrinfo(result); //No longer needed
+	
 	
 	/*Send WRQ with blocksize option*/
 	int WRQ_SIZE = 2+strlen(file)+1+strlen("octet")+1+strlen("blcksize")+1+strlen(blocksize);
@@ -95,7 +99,8 @@ void puttftp(char *host, char *file, char *blocksize) {
 	WRQ = (char *) malloc(WRQ_SIZE);
 	WRQ = buildWRQ(file, WRQ_SIZE, blocksize);
 	sendto(sfd, WRQ, WRQ_SIZE, 0, (struct sockaddr *) result->ai_addr, result->ai_addrlen);
-	WRQ = (char *) realloc(WRQ, WRQ_SIZE);
+	free(WRQ);
+	
 	
 	/*Read OACK*/
 	char *OACK;
@@ -104,6 +109,8 @@ void puttftp(char *host, char *file, char *blocksize) {
 	recvfrom(sfd, OACK, OACK_SIZE, 0, &srv_addr, &srv_addrlen);
 	printf("New port : %d \n",htons (((struct sockaddr_in *) &srv_addr)->sin_port));
 	
+	
+	/*Get back the accepted blocksize*/
 	char *blcksize;
 	blcksize = (char *) malloc(strlen(blocksize));
 	blcksize = &OACK[2+strlen("blcksize")];
@@ -111,6 +118,7 @@ void puttftp(char *host, char *file, char *blocksize) {
 	
 	if (atoi(blcksize) <= atoi(blocksize)) { //Check if accepted blocksize (by the server) is <= to the given one (from client) else send error packet
 		
+		/*Starting to send and check acknowledgments*/
 		char *buf;
 		buf = (char *) malloc(atoi(blcksize));
 		
@@ -118,24 +126,43 @@ void puttftp(char *host, char *file, char *blocksize) {
 		ACK = (char *) malloc(4);
 		
 		int fdr = open(file, 0, O_RDONLY);
+		if (fdr == -1) {
+			perror("open");
+			printf("Error opening file\n");
+			exit(EXIT_FAILURE);
+		}
 		
 		int block = 1;
 		int cnt = 0; //To count number of times data is sent before receiving ACK or not, arbitrary set at 3
-		ssize_t nread2 = read(fdr, buf, atoi(blcksize)); //Check nread2 != -1
-		printf("nread2 + %ld\n", nread2);
 		
-		while (nread2 >= 0) { //While there are bytes to read in the file
+		ssize_t nread = read(fdr, buf, atoi(blcksize));
+		if (nread == -1) {
+			perror("read");
+			printf("Error reading file\n");
+			exit(EXIT_FAILURE);
+		}
+		
+		while (nread >= 0) { //While there are bytes to read in the file
 			char *data;
-			data = (char *) malloc(nread2+2+2);
-			if (nread2 == 0) {
+			if (nread == 0) {
+				data = (char *) realloc(data, 0+2+2);
 				data = buildDATA(buf, block, 0+2+2);
 				sendto(sfd, data, 0+2+2, 0, &srv_addr, srv_addrlen); 
-				//Don't forget to verify that ACK has been received
+				while (ACK[3] != block && cnt < 3) {
+					sendto(sfd, data, 0+2+2, 0, &srv_addr, srv_addrlen); //Resend data
+					recvfrom(sfd, ACK, 4, 0, &srv_addr, &srv_addrlen); //Wait for ACK
+					cnt++;
+				}
+				printf("Transmission complete.\n");
+				close(fdr);
+				free(buf);
+				free(ACK);
+				free(data);
 				exit(EXIT_SUCCESS);
 			}
 			else {
-				data = buildDATA(buf, block, nread2+2+2);
-				sendto(sfd, data, nread2+2+2, 0, &srv_addr, srv_addrlen);
+				data = buildDATA(buf, block, nread+2+2);
+				sendto(sfd, data, nread+2+2, 0, &srv_addr, srv_addrlen);
 				recvfrom(sfd, ACK, 4, 0, &srv_addr, &srv_addrlen); //Wait for ACK
 				while (ACK[3] != block && cnt < 3) {
 					sendto(sfd, data, atoi(blcksize)+2+2, 0, &srv_addr, srv_addrlen); //Resend data
@@ -144,13 +171,14 @@ void puttftp(char *host, char *file, char *blocksize) {
 					cnt++;
 				}
 				block++;
-				nread2 = read(fdr, buf, atoi(blcksize));
-				data = (char *) realloc(data,nread2+2+2);
+				buf = (char *) realloc(buf, atoi(blcksize));
+				nread = read(fdr, buf, atoi(blcksize));
+				if (nread != 0) {
+					data = (char *) realloc(data, nread+2+2);
+				}
 			}
 		}
-		close(fdr);
 	}
-	
 }
 
 int main(int argc, char *argv[]) { //argv0 : input command, argc : number of args, argv1 : first arg (host), argv2 second arg (file), argv3 : third arg (blocksize)	
